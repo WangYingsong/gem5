@@ -1,3 +1,6 @@
+// created by Wang Yingsong on 2025-12-12
+// tests/spme_benchmark/spme_micro.c
+
 #include <pthread.h>
 #include <stdio.h>
 
