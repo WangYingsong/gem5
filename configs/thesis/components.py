@@ -8,6 +8,7 @@
 
 from m5.objects import *
 
+
 class L1Cache(Cache):
     """L1 Cache 基类: 低延迟，高吞吐"""
 
@@ -44,27 +45,30 @@ class L2Cache(Cache):
     tgts_per_mshr = 12
     write_buffers = 8
 
+
 class L1XBar(CoherentXBar):
     """
-    L1 Crossbar: 
+    L1 Crossbar:
     用于 CPU 内部汇聚 I-Port/D-Port 和 MMU Walker。
     特点：
     1. 极低延迟 (1 cycle)
     2. 无 Snoop Filter (因为是点对点私有连接，不需要过滤)
     3. 不是一致性或统一对其点 (只是个简单的复用器)
     """
+
     width = 32
     frontend_latency = 1
     forward_latency = 0
     response_latency = 1
     snoop_response_latency = 1
-    
+
     # [关键优化] 显式禁用 Snoop Filter，减轻仿真负担
-    snoop_filter = NULL 
-    
+    snoop_filter = NULL
+
     # 显式声明这不是系统级的一致性点
     point_of_coherency = False
     point_of_unification = False
+
 
 class StandardCore(SubSystem):
     """

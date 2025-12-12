@@ -21,7 +21,7 @@ void* thread_task(void* thread_arg) {
 
     // 2. 打印核心信息
     // 注意：GEM5 SE 模式下，不同的 Pthread ID (SysID) 就对应不同的硬件 Core
-    printf("   [Core Context: 0x%lx] executing Task %ld: Hello World!\n", 
+    printf("   [Core Context: 0x%lx] executing Task %ld: Hello World!\n",
            (unsigned long)sys_tid, task_id);
 
     return NULL;
@@ -41,10 +41,10 @@ int main() {
         // === 排队重试机制 ===
         while(1) {
             rc = pthread_create(&threads[t], NULL, thread_task, (void *)t);
-            
+
             if (rc == 0) {
                 break; // 成功放入核心
-            } else if (rc == 11) { 
+            } else if (rc == 11) {
                 // 核心满了 (EAGAIN)，原地重试
                 // 因为计算量很小，瞬间就会有核心释放
             } else {

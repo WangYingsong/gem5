@@ -32,7 +32,7 @@ SE_BENCHMARKS = {
     "matmul": os.path.join(TESTS_ROOT, "matmul"),
     "test_sharing": os.path.join(TESTS_ROOT, "test_sharing"),
     "spme_micro": os.path.join(TESTS_ROOT, "spme_micro"),
-    'hello_mt':     os.path.join(TESTS_ROOT, "hello_mt")
+    "hello_mt": os.path.join(TESTS_ROOT, "hello_mt"),
 }
 
 # =========================================================

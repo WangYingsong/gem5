@@ -9,8 +9,8 @@
 
 # 从 components 中导入缓存定义
 from components import (
-    StandardCore,
     L2Cache,
+    StandardCore,
 )
 
 from m5.objects import *
@@ -18,6 +18,7 @@ from m5.objects import *
 # =========================================================
 # 标准多核架构构建函数
 # =========================================================
+
 
 def build(system, num_cpus, l1_size, l2_size):
     """
