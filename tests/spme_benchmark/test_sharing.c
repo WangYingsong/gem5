@@ -5,7 +5,7 @@
 #include <stdio.h>
 
 #define NUM_THREADS 2
-#define ITERATIONS 10000
+#define ITERATIONS 100
 
 volatile int shared_counter = 0;
 pthread_mutex_t lock;

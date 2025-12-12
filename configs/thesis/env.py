@@ -32,6 +32,7 @@ SE_BENCHMARKS = {
     "matmul": os.path.join(TESTS_ROOT, "matmul"),
     "test_sharing": os.path.join(TESTS_ROOT, "test_sharing"),
     "spme_micro": os.path.join(TESTS_ROOT, "spme_micro"),
+    'hello_mt':     os.path.join(TESTS_ROOT, "hello_mt")
 }
 
 # =========================================================
@@ -91,7 +92,7 @@ def setup_se_workload(system, binary_path, cmd_args=""):
     process.cwd = os.getcwd()
 
     # -------------------------------------------------------------
-    # [关键修正] 初始化系统级 SE Workload
+    # 初始化系统级 SE Workload
     # 这一步是必须的，告诉 System 如何处理 X86 的系统调用
     # -------------------------------------------------------------
     system.workload = SEWorkload.init_compatible(binary_path)
