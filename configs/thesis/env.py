@@ -33,6 +33,8 @@ SE_BENCHMARKS = {
     "test_sharing": os.path.join(TESTS_ROOT, "test_sharing"),
     "spme_micro": os.path.join(TESTS_ROOT, "spme_micro"),
     "hello_mt": os.path.join(TESTS_ROOT, "hello_mt"),
+    "spme_vec_add": os.path.join(TESTS_ROOT, "spme_vec_add"),
+    "spme_task_queue": os.path.join(TESTS_ROOT, "spme_task_queue"),
 }
 
 # =========================================================
