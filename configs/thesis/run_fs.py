@@ -1,6 +1,5 @@
 # created by Wang Yingsong on 2025-12-12
 # configs/thesis/run_fs.py
-
 # =========================================================
 # FS 模式仿真运行脚本 (run_fs.py)
 # =========================================================
@@ -9,7 +8,6 @@ import argparse
 import os
 import sys
 
-# 导入环境与架构定义
 import env
 import Standard_MultiCore_Arch
 
@@ -17,44 +15,45 @@ import m5
 from m5.objects import *
 
 # =========================================================
-# 参数解析 (FS 专属)
+# 参数解析
 # =========================================================
 parser = argparse.ArgumentParser(description="FS Simulation Runner")
-
-# 1. 架构选择
-parser.add_argument(
-    "--arch",
-    type=str,
-    required=True,
-    choices=["standard_multicore"],
-    help="Select Architecture Design",
-)
-
-# 2. Checkpoint 选项
-parser.add_argument(
-    "--restore",
-    action="store_true",
-    help="Restore from standard checkpoint dir",
-)
+parser.add_argument("--arch", type=str, required=True, choices=["standard"])
+parser.add_argument("--restore", action="store_true")
+# FS 模式通常固定核心数，或者也可以通过参数传入
+parser.add_argument("--num-cpus", type=int, default=4)
 
 args = parser.parse_args()
 
 # =========================================================
 # 系统构建
 # =========================================================
-# 1. 创建基础 FS 环境 (带内核、磁盘)
-system = env.create_base_system(full_system=True)
+system = None
 
-# 2. 注入架构
-if args.arch == "standard_multicore":
-    Standard_MultiCore_Arch.build(
-        system,
-        num_cpus=4,  # FS 模式下严格固定为 4 核，保证对照公平
-        l1_size="32kB",
-        l2_size="2MB",
-    )
+if args.arch == "standard":
+    # 之前是 env.create_base_system + build
+    # 现在直接调用 build_system
+    system = Standard_MultiCore_Arch.build_system(args)
 
-# 3. 加载 FS 负载 (挂载磁盘)
+    # 注意：FS 模式需要内核和磁盘配置，这些之前在 env.create_base_system 里
+    # 现在需要在 system 创建后手动挂载，或者让 Arch 脚本感知 full_system 选项
+    # 这里我们采用简单的"后处理"方式补全 FS 需求:
+
+    system.kernel = env.KERNEL_BIN
+    system.workload = KernelWorkload(object_file=env.KERNEL_BIN)
+
+    # 添加 PC 平台组件 (Standard Arch 默认没有创建 PC 组件)
+    # 这部分逻辑其实最好封装在 env 里，或者让 Arch 脚本支持 FS 模式
+    # 简单起见，我们在这里补充南桥和 PC 结构
+    system.pc = Pc()
+    system.pc.south_bridge = SouthBridge()
+    # 连接 IO 总线 (Standard Arch 里是 membus)
+    system.pc.south_bridge.attachIO(system.membus)
+    system.pc.south_bridge.ide.disks = []
+
+# =========================================================
+# 加载 FS 负载
+# =========================================================
 print(f"[FS RUN] Arch: {args.arch} | OS: Ubuntu")
 env.setup_fs_workload(system)
 

@@ -1,3 +1,10 @@
+// created by Wang Yingsong on 2025-12-12
+// tests/spme_benchmark/test_sharing.c
+// =============================================================
+// 多线程共享变量一致性测试
+// 说明：验证多线程环境下共享变量的一致性与缓存一致性协议
+// =============================================================
+
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>

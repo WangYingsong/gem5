@@ -1,3 +1,10 @@
+// created by Wang Yingsong on 2025-12-14
+// tests/spme_benchmark/hello_mt.c
+// =============================================================
+// 多线程 Hello World 程序
+// 说明：展示多线程环境下的硬件与软件线程 ID 映射
+// =============================================================
+
 #define _GNU_SOURCE
 #include <errno.h>
 #include <pthread.h>

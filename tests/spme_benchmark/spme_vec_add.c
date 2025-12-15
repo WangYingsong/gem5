@@ -1,3 +1,10 @@
+// created by Wang Yingsong on 2025-12-12
+// tests/spme_benchmark/spme_vec_add.c
+// =============================================================
+// SPME 向量加法示例代码
+// 说明：模拟多核环境下的向量加法计算，展示 SPME 模式下的线程行为
+// =============================================================
+
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>

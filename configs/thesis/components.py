@@ -129,3 +129,67 @@ class StandardCore(SubSystem):
         self.cpu.interrupts[0].pio = interrupt_bus.mem_side_ports
         self.cpu.interrupts[0].int_requestor = interrupt_bus.cpu_side_ports
         self.cpu.interrupts[0].int_responder = interrupt_bus.mem_side_ports
+
+
+# =========================================================
+# 激进多核架构组件定义 (Conventional Aggressive Components)
+# =========================================================
+class ConventionalO3CPU(X86O3CPU):
+    #  Conventional: 4-wide dispatch/retirement
+    fetchWidth = 4
+    decodeWidth = 4
+    renameWidth = 4
+    issueWidth = 4
+    dispatchWidth = 4
+    commitWidth = 4
+
+    #  128-entry ROB
+    numROBEntries = 128
+
+    #  32-entry LSQ (GEM5 分为 LQ 和 SQ，通常拆分为 16/16 或 32/32)
+    # 为了保证激进性能，建议设为 Load=32, Store=32 或总和匹配
+    LQEntries = 32
+    SQEntries = 32
+
+    # 物理寄存器文件 (需比 ROB 大以支持重命名)
+    numPhysIntRegs = 256
+    numPhysFloatRegs = 256
+
+    # 分支预测 (论文未详述，但"激进核心"通常配备竞赛型预测器)
+    branchPred = TournamentBP()
+
+
+class ConventionalL1ICache(Cache):
+    size = "64KiB"  #
+    assoc = 4  #
+    tag_latency = 3  #
+    data_latency = 3
+    response_latency = 1  # 这里的 1+2=3 cycles total
+    mshrs = 32  #
+    tgts_per_mshr = 20
+
+
+class ConventionalL1DCache(Cache):
+    size = "64KiB"  #
+    assoc = 8  #
+    tag_latency = 3
+    data_latency = 3
+    response_latency = 1
+    mshrs = 32  #
+    tgts_per_mshr = 20
+    write_buffers = 32
+
+
+class ConventionalLLC(Cache):
+    #  Conventional: 2MB of LLC per core.
+    # 如果你的实验是 4 核，请设为 '8MB'
+    size = "8MiB"
+    assoc = 16  #
+    tag_latency = 15  # 大容量缓存延迟较高，通常 10-20 cycles
+    data_latency = 15
+    response_latency = 5
+    mshrs = 64  #
+    tgts_per_mshr = 20
+
+    # 论文提到 Crossbar 互联
+    # 在 GEM5 中，确保这个 Cache 连在 SystemXBar 上

@@ -35,21 +35,28 @@ SE_BENCHMARKS = {
     "hello_mt": os.path.join(TESTS_ROOT, "hello_mt"),
     "spme_vec_add": os.path.join(TESTS_ROOT, "spme_vec_add"),
     "spme_task_queue": os.path.join(TESTS_ROOT, "spme_task_queue"),
+    "spme_matrix": os.path.join(TESTS_ROOT, "spme_matrix"),
 }
+
+# [新增] 支持的架构列表
+VALID_ARCHS = [
+    "standard",  # 普通多核 (Flat, Private L1, Shared L2)
+    "conventional",  # 论文基准 (Aggressive Core, Huge LLC, Crossbar)
+]
 
 # =========================================================
 # 2. 全局物理参数
 # =========================================================
-SYS_CLOCK = "3GHz"
-MEM_SIZE = "4GB"
-MEM_TYPE = DDR4_2400_8x8
+SYS_CLOCK = "2GHz"  # 统一为论文频率
+MEM_SIZE = "3GiB"  # 统一内存大小
+MEM_TYPE = DDR3_1600_8x8  # 统一内存类型 (更接近论文时代的 45ns Latency)
 
 
 # =========================================================
 # 3. 基础系统工厂
 # =========================================================
 def create_base_system(full_system=True):
-    """创建包含时钟、内存、总线的基础系统"""
+    """创建包含时钟、内存、总线的基础系统 (仅用于 Standard 架构)"""
     system = System()
     system.clk_domain = SrcClockDomain(
         clock=SYS_CLOCK, voltage_domain=VoltageDomain()
@@ -102,14 +109,17 @@ def setup_se_workload(system, binary_path, cmd_args=""):
     # 查找并分配 CPU
     cpu_list = []
     if hasattr(system, "core_list"):
+        # 适配 StandardCore 封装
         cpu_list = [core.cpu for core in system.core_list]
     elif hasattr(system, "cluster_list"):
+        # 适配 SPME Clusters
         for cluster in system.cluster_list:
             if hasattr(cluster, "cpus"):
                 cpu_list.extend(cluster.cpus)
             elif hasattr(cluster, "_cpus"):
                 cpu_list.extend(cluster._cpus)
     elif hasattr(system, "cpu"):
+        # 适配 Conventional 架构 (直接列表)
         cpu_list = system.cpu
 
     if not cpu_list:

@@ -1,3 +1,10 @@
+# created by Wang Yingsong on 2025-12-14
+# tests/spme_benchmark/Makefile
+# =============================================================
+# SPME 基准测试 Makefile
+# 功能：编译当前目录下的所有 C 源文件为静态可执行文件
+# =============================================================
+
 CC = gcc
 CFLAGS = -static -pthread -O2 -Wall
 SRC_DIR = .

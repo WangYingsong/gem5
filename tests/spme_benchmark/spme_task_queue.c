@@ -1,3 +1,10 @@
+// created by Wang Yingsong on 2025-12-14
+// tests/spme_benchmark/spme_task_queue.c
+// =============================================================
+// SPME 任务排队示例代码
+// 说明：模拟多核环境下的任务调度与排队
+// =============================================================
+
 #include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
