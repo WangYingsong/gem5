@@ -26,7 +26,7 @@ CHECKPOINT_DIR = os.path.join(GEM5_ROOT, "m5out_base")
 # SE 资源 (微基准测试二进制目录)
 TESTS_ROOT = os.path.join(GEM5_ROOT, "tests/spme_benchmark/bin")
 
-# 常用测试程序映射
+# 常用测试程序映射 (Registry)
 SE_BENCHMARKS = {
     "hello": os.path.join(TESTS_ROOT, "hello"),
     "matmul": os.path.join(TESTS_ROOT, "matmul"),
@@ -36,12 +36,17 @@ SE_BENCHMARKS = {
     "spme_vec_add": os.path.join(TESTS_ROOT, "spme_vec_add"),
     "spme_task_queue": os.path.join(TESTS_ROOT, "spme_task_queue"),
     "spme_matrix": os.path.join(TESTS_ROOT, "spme_matrix"),
+    "spme_stream": os.path.join(TESTS_ROOT, "spme_stream"),
+    "spme_montecarlo": os.path.join(TESTS_ROOT, "spme_montecarlo"),
+    "spme_conv": os.path.join(TESTS_ROOT, "spme_conv"),
+    "spme_bfs": os.path.join(TESTS_ROOT, "spme_bfs"),
 }
 
-# [新增] 支持的架构列表
+# 支持的架构列表
 VALID_ARCHS = [
     "standard",  # 普通多核 (Flat, Private L1, Shared L2)
     "conventional",  # 论文基准 (Aggressive Core, Huge LLC, Crossbar)
+    "spme",  # SPME 架构 (Shared Frontend)
 ]
 
 # =========================================================
