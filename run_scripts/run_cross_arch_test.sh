@@ -95,9 +95,7 @@ if [ ! -f "${BENCHMARK}.c" ]; then
     echo -e "\033[1;31m[ERROR] Source file ${BENCHMARK}.c not found!\033[0m"
     exit 1
 fi
-
-# 简单的增量编译检查：如果 bin 存在且比 source 新，则跳过
-if [ ! -f "bin/${BENCHMARK}" ] || [ "${BENCHMARK}.c" -nt "bin/${BENCHMARK}" ]; then
+    #编译
     echo "  > Compiling $BENCHMARK ..."
     gcc -static -pthread -O3 "${BENCHMARK}.c" -o "bin/${BENCHMARK}" -lm
 fi

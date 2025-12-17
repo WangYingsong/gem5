@@ -82,10 +82,9 @@ for bench in "${target_list[@]}"; do
         echo -e "\033[1;31m[ERROR] Source file ${bench}.c not found!\033[0m"
         continue
     fi
-    # 简单的增量编译检查：如果 bin 存在且比 source 新，则跳过
-    if [ ! -f "bin/${bench}" ] || [ "${bench}.c" -nt "bin/${bench}" ]; then
-        echo "  > Compiling $bench ..."
-        gcc -static -pthread -O3 "${bench}.c" -o "bin/${bench}" -lm
+    # 编译
+    echo "  > Compiling $bench ..."
+    gcc -static -pthread -O3 "${bench}.c" -o "bin/${bench}" -lm
     fi
 done
 cd - > /dev/null
