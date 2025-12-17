@@ -5,94 +5,70 @@
 // 说明：模拟多核环境下的任务调度与排队
 // =============================================================
 
-#include <errno.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-// 你的架构配置
-#define NUM_CPUS 4
-// 我们设置任务数为核心数的 3 倍，确保必须排队
-#define TOTAL_TASKS 12
-
-// 模拟计算负载的强度 (防止任务瞬间跑完，看不出排队效果)
-#define WORK_INTENSITY 10000
-
-// 线程参数
+#define DEFAULT_TASKS 200000
+#define NUM_THREADS 4
+// 模拟每个任务的计算量 (不要太大，否则测不出锁竞争；也不要太小，否则全是锁开销)
+#define WORK_INTENSITY 100
+int total_tasks = DEFAULT_TASKS;
+int tasks_processed = 0; // 全局共享计数器 (任务队列)
+pthread_mutex_t lock;
 typedef struct
 {
-    long task_id;
+    int id;
 } thread_arg_t;
-
-thread_arg_t task_args[TOTAL_TASKS];
-pthread_t threads[TOTAL_TASKS];
-
-// === 工作线程函数 ===
-void*
-worker_thread(void* arg)
-{
-    thread_arg_t* my_arg = (thread_arg_t*)arg;
-    long tid = my_arg->task_id;
-
-    // 1. 获取当前“占用”的线程ID (对应硬件Context)
-    pthread_t sys_id = pthread_self();
-
-    printf("   [Worker] Task %02ld STARTED on HW Context 0x%lx\n",
-           tid, (unsigned long)sys_id);
-
-    // 2. 模拟耗时计算 (忙等待)
-    volatile int counter = 0;
-    for (int i = 0; i < WORK_INTENSITY; i++) {
-        counter++;
+void* worker(void* arg) {
+    thread_arg_t* t = (thread_arg_t*)arg;
+    int my_id = t->id;
+    int processed_locally = 0;
+    while (1) {
+        int task_id = -1;
+        // --- 临界区开始 (Critical Section) ---
+        pthread_mutex_lock(&lock);
+        if (tasks_processed < total_tasks) {
+            task_id = tasks_processed++;
+        }
+        pthread_mutex_unlock(&lock);
+        // --- 临界区结束 ---
+        if (task_id == -1) {
+            // 任务队列已空，退出
+            break;
+        }
+        // 模拟任务处理 (Payload)
+        volatile int dummy = 0;
+        for (int i = 0; i < WORK_INTENSITY; i++) {
+            dummy += i;
+        }
+        processed_locally++;
     }
-
-    printf("   [Worker] Task %02ld FINISHED. Releasing Core.\n", tid);
+    // 可以在这里打印每个线程抢到了多少任务，观察负载均衡
+    // printf("Worker %d processed %d tasks\n", my_id, processed_locally);
     return NULL;
 }
-
-int
-main()
-{
-    int rc;
-    long t;
-
-    printf("\n[MAIN] Scheduler started.\n");
-    printf("[MAIN] Hardware Cores: %d\n", NUM_CPUS);
-    printf("[MAIN] Total Tasks:    %d\n", TOTAL_TASKS);
-    printf("------------------------------------------------------------\n");
-
-    // === 任务分发循环 ===
-    for (t = 0; t < TOTAL_TASKS; t++) {
-        task_args[t].task_id = t;
-
-        // 【关键逻辑】 失败重试循环 (Busy Retry Loop)
-        while (1) {
-            rc = pthread_create(&threads[t], NULL, worker_thread,
-                                (void*)&task_args[t]);
-
-            if (rc == 0) {
-                // 成功：任务被放入了某个空闲核心
-                break;
-            } else if (rc == EAGAIN) { // EAGAIN 通常是 11
-                // 失败：核心已满，原地空转等待
-                volatile int dummy = 0;
-                dummy++;
-            } else {
-                // 其他致命错误
-                printf("[FATAL] pthread_create failed with code %d\n", rc);
-                exit(-1);
-            }
-        }
+int main(int argc, char* argv[]) {
+    if (argc > 1) total_tasks = atoi(argv[1]);
+    printf("[Benchmark] TaskQueue (Lock Contention). Tasks: %d\n",
+           total_tasks);
+    pthread_mutex_init(&lock, NULL);
+    // 修改点 1: 线程句柄减少 1
+    pthread_t threads[NUM_THREADS - 1];
+    thread_arg_t args[NUM_THREADS];
+    // 修改点 2: 启动子线程 (Worker 0, 1, 2)
+    for (int i = 0; i < NUM_THREADS - 1; i++) {
+        args[i].id = i;
+        pthread_create(&threads[i], NULL, worker, &args[i]);
     }
-
-    printf("------------------------------------------------------------\n");
-    printf("[MAIN] All tasks dispatched. Waiting for completion...\n");
-
-    // === 等待所有任务完成 ===
-    for (t = 0; t < TOTAL_TASKS; t++) {
-        pthread_join(threads[t], NULL);
+    // 修改点 3: 主线程加入抢任务 (Worker 3)
+    args[NUM_THREADS - 1].id = NUM_THREADS - 1;
+    worker(&args[NUM_THREADS - 1]);
+    // 修改点 4: 等待子线程
+    for (int i = 0; i < NUM_THREADS - 1; i++) {
+        pthread_join(threads[i], NULL);
     }
-
-    printf("[MAIN] All %d tasks completed successfully.\n", TOTAL_TASKS);
+    printf("[Done] Processed: %d\n", tasks_processed);
+    pthread_mutex_destroy(&lock);
     return 0;
 }

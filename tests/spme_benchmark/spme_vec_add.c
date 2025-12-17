@@ -38,7 +38,7 @@ main(int argc, char* argv[])
     if (argc > 1)
         N = atol(argv[1]);
 
-    printf("[Benchmark] Vector Add. N=%ld\n", N);
+    printf("[Benchmark] Vector Add (Master-Worker). N=%ld\n", N);
 
     a = (double*)malloc(N * sizeof(double));
     b = (double*)malloc(N * sizeof(double));
@@ -49,20 +49,36 @@ main(int argc, char* argv[])
         b[i] = i * 0.5;
     }
 
-    pthread_t th[NUM_THREADS];
+    // 修改点 1: 线程句柄减少 1
+    pthread_t th[NUM_THREADS - 1];
     thread_arg_t args[NUM_THREADS];
     long chunk = N / NUM_THREADS;
 
-    for (int i = 0; i < NUM_THREADS; i++) {
+    // 修改点 2: 启动子线程 (Worker 0, 1, 2)
+    for (int i = 0; i < NUM_THREADS - 1; i++) {
+        args[i].id = i;
         args[i].start = i * chunk;
-        args[i].end = (i == NUM_THREADS - 1) ? N : (i + 1) * chunk;
+        args[i].end = (i + 1) * chunk;
         pthread_create(&th[i], NULL, worker, &args[i]);
     }
 
-    for (int i = 0; i < NUM_THREADS; i++) {
+    // 修改点 3: 主线程执行最后一份任务 (Worker 3)
+    int last = NUM_THREADS - 1;
+    args[last].id = last;
+    args[last].start = last * chunk;
+    args[last].end = N; // 包含剩余所有
+    worker(&args[last]);
+
+    // 修改点 4: 等待子线程
+    for (int i = 0; i < NUM_THREADS - 1; i++) {
         pthread_join(th[i], NULL);
     }
 
     printf("[Done] c[N-1] = %f\n", c[N-1]);
+
+    free(a);
+    free(b);
+    free(c);
+
     return 0;
 }

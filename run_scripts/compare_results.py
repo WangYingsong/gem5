@@ -22,15 +22,29 @@ def extract_dir_info(dir_path):
     parent_dir = os.path.dirname(abs_path)
     folder_name = os.path.basename(abs_path)
 
-    # 尝试提取 workload 名称，去除日期后缀
-    match = re.match(r"^(.*?)_\d{4}-\d{2}-\d{2}", folder_name)
-    workload_name = match.group(1) if match else folder_name
+    # --- 智能提取 Benchmark 名称和核心数 ---
+    cores = "N/A"
+    core_match = re.search(r"_(\d+)c", folder_name)
+    if core_match:
+        cores = core_match.group(1)
+
+    if core_match:
+        bench_raw = folder_name[: core_match.start()]
+    else:
+        date_match = re.search(r"_\d{4}-\d{2}-\d{2}", folder_name)
+        if date_match:
+            bench_raw = folder_name[: date_match.start()]
+        else:
+            bench_raw = folder_name
+
+    workload_name = bench_raw.rstrip("_")
 
     stats_path = os.path.join(dir_path, "stats.txt")
 
     data = {
         "Arch": os.path.basename(parent_dir),
         "Benchmark": workload_name,
+        "Cores": cores,
         "Folder": folder_name,
         "Status": "OK",
         "Time": 0.0,
@@ -116,22 +130,19 @@ def format_cell(
     metric_type,
     is_pct_val=False,
     is_baseline_row=False,
-    show_diff=True,  # [新增] 控制是否显示差异
+    show_diff=True,
 ):
-    # 1. 基础数值格式化
     if is_pct_val:
         val_str = f"{curr_val:.2f}"
     else:
         val_str = f"{curr_val:.4f}"
 
-    # 2. 如果不显示差异，或者这是基准行，直接返回数值
     if not show_diff or is_baseline_row:
         return val_str
 
     if base_val == 0:
         return val_str
 
-    # 3. 差异计算逻辑
     if metric_type == "lower_is_better":
         if is_pct_val:
             diff = curr_val - base_val
@@ -142,7 +153,6 @@ def format_cell(
             speedup = base_val / curr_val
             return f"{val_str} (x{speedup:.2f})"
     else:
-        # higher is better
         diff_pct = (curr_val - base_val) / base_val * 100
         return f"{val_str} ({diff_pct:+.1f}%)"
 
@@ -151,28 +161,29 @@ def format_cell(
 # 3. 主程序
 # =========================================================
 def main():
-    parser = argparse.ArgumentParser(description="Split View Gem5 Comparison")
+    parser = argparse.ArgumentParser(description="Gem5 Comparison Tool")
     parser.add_argument(
         "directories", nargs="+", help="Result directories (1st is Baseline)"
     )
     parser.add_argument(
-        "-f",
-        "--file",
-        action="store_true",
-        help="Save report to file (suppress console output)",
+        "-f", "--file", action="store_true", help="Save report to file"
     )
-    # [新增] 平行对比模式开关
     parser.add_argument(
         "-p",
         "--parallel",
         action="store_true",
-        help="Parallel Mode: Show raw values only (Workload Characterization), no baseline comparison",
+        help="Parallel Mode: Show raw values only",
     )
     args = parser.parse_args()
 
     results = []
     for d in args.directories:
         res = extract_dir_info(d)
+        # [预处理] 合并 Arch 和 Cores，方便 Part 1 显示
+        if res["Cores"] != "N/A":
+            res["Arch_Full"] = f"{res['Arch']} ({res['Cores']})"
+        else:
+            res["Arch_Full"] = res["Arch"]
         results.append(res)
 
     if not results:
@@ -182,7 +193,7 @@ def main():
     output_lines = []
 
     # ================= PART 1: SUMMARY TABLE =================
-    output_lines.append("=" * 140)
+    output_lines.append("=" * 150)
     if args.parallel:
         output_lines.append(
             "PART 1: WORKLOAD CHARACTERIZATION (Parallel View - No Baseline)"
@@ -191,47 +202,46 @@ def main():
         output_lines.append(
             f"PART 1: PERFORMANCE COMPARISON (Baseline: {base['Arch']} - {base['Benchmark']})"
         )
-    output_lines.append("=" * 140)
+    output_lines.append("=" * 150)
 
-    # 定义列宽
     col_w = 18
+    col_w_wide = 24  # 加宽以容纳 Arch (Cores) 和长名字
 
+    # [优化] 将 Cores 合并到 Arch 列
     summary_cols = [
-        ("Arch", "Arch", "text", False),
-        ("Benchmark", "Benchmark", "text", False),
-        ("Time (s)", "Time", "lower_is_better", False),
-        ("Avg IPC", "Avg IPC", "higher_is_better", False),
-        ("Total IPC", "Total IPC", "higher_is_better", False),
-        ("BW (GB/s)", "BW", "higher_is_better", False),
-        ("LLC Miss(%)", "LLC Miss", "lower_is_better", True),
+        ("Arch (Cores)", "Arch_Full", "text", False, col_w_wide),
+        ("Benchmark", "Benchmark", "text", False, col_w_wide),
+        # ("Cores"...) 已删除
+        ("Time (s)", "Time", "lower_is_better", False, col_w),
+        ("Avg IPC", "Avg IPC", "higher_is_better", False, col_w),
+        ("Total IPC", "Total IPC", "higher_is_better", False, col_w),
+        ("BW (GB/s)", "BW", "higher_is_better", False, col_w),
+        ("LLC Miss(%)", "LLC Miss", "lower_is_better", True, col_w),
     ]
 
     header = ""
     for col in summary_cols:
-        header += f"{col[0]:<{col_w}} "
-    header += "Source Folder"  # 最后一列不限制宽度
+        name, _, _, _, width = col
+        header += f"{name:<{width}} "
+    header += "Source Folder"
 
     output_lines.append(header)
-    output_lines.append("-" * 140)
+    output_lines.append("-" * 150)
 
     for idx, res in enumerate(results):
         row_str = ""
         is_base = idx == 0
         for col in summary_cols:
-            head, key, mtype, is_pct = col
+            head, key, mtype, is_pct, width = col
             val = res.get(key, 0)
             base_val = base.get(key, 0)
 
             if mtype == "text":
                 val_str = str(val)
-                # 截断太长的名字
-                if len(val_str) > col_w - 2:
-                    val_str = val_str[: col_w - 3] + ".."
-                row_str += f"{val_str:<{col_w}} "
+                if len(val_str) > width - 1:
+                    val_str = val_str[: width - 2] + ".."
+                row_str += f"{val_str:<{width}} "
             else:
-                # [关键] 传入 show_diff 参数
-                # 如果是 Parallel 模式，show_diff = False
-                # 如果是普通模式，只有非 Base 行才显示 Diff
                 cell = format_cell(
                     base_val,
                     val,
@@ -240,7 +250,7 @@ def main():
                     is_baseline_row=is_base,
                     show_diff=(not args.parallel),
                 )
-                row_str += f"{cell:<{col_w}} "
+                row_str += f"{cell:<{width}} "
 
         row_str += f"{res['Folder']}"
         output_lines.append(row_str)
@@ -258,8 +268,11 @@ def main():
     sys_label_width = 35
 
     for idx, res in enumerate(results):
+        cores_info = (
+            f"{res['Cores']} Cores" if res["Cores"] != "N/A" else "N/A"
+        )
         output_lines.append(
-            f"[{idx}] Arch: {res['Arch']} | Workload: {res['Benchmark']}"
+            f"[{idx}] Arch: {res['Arch']} ({cores_info}) | Workload: {res['Benchmark']}"
         )
         output_lines.append(f"    Folder: {res['Folder']}")
         output_lines.append("-" * 60)
@@ -293,7 +306,6 @@ def main():
         l1i = res.get("Core L1I Misses", [])
 
         if ipcs:
-            # 简化了 per-core 表格的表头
             cw_id = 8
             cw_val = 15
             table_header = f"    {'Core ID':<{cw_id}} | {'IPC':<{cw_val}} | {'L1D Miss (%)':<{cw_val}} | {'L1I Miss (%)':<{cw_val}}"
@@ -316,29 +328,51 @@ def main():
 
     final_output = "\n".join(output_lines)
 
-    # ================= FILE OUTPUT =================
+    # ================= FILE OUTPUT LOGIC (VS Split) =================
     if args.file:
-        dir_names = [r["Folder"] for r in results]
-        combined_name = "_vs_".join(dir_names)
-        # 限制文件名长度，防止溢出
-        combined_name = re.sub(r'[\\/*?:"<>|]', "", combined_name)[:150]
+        unique_archs = sorted(list({r["Arch"] for r in results}))
+        unique_benchs = sorted(list({r["Benchmark"] for r in results}))
 
-        # [Auto-Path Logic]
         script_dir = os.path.dirname(os.path.abspath(__file__))
         gem5_root = os.path.dirname(script_dir)
-        result_dir = os.path.join(gem5_root, "tests", "result")
+        base_result_dir = os.path.join(gem5_root, "tests", "result")
 
-        if not os.path.exists(result_dir):
+        filename = "Compare_Report.txt"
+        save_dir = base_result_dir
+
+        # 逻辑 A: 同一架构，不同负载 (Parallel Mode)
+        if len(unique_archs) == 1:
+            target_arch = unique_archs[0]
+            save_dir = os.path.join(base_result_dir, target_arch)
+            # 样例名之间用 _vs_ 分割
+            bench_str = "_vs_".join(unique_benchs)
+            filename = f"Compare_Report_{target_arch}_{bench_str}.txt"
+
+        # 逻辑 B: 不同架构 (Cross-Arch Mode)
+        else:
+            save_dir = base_result_dir
+            # 架构名之间用 _vs_ 分割
+            arch_str = "_vs_".join(unique_archs)
+            # 负载名之间用 _vs_ 分割 (如果也是多个)
+            bench_str = "_vs_".join(unique_benchs)
+            filename = f"Compare_Report_{arch_str}_{bench_str}.txt"
+
+        filename = re.sub(r'[\\/*?:"<>|]', "", filename)[:250]
+        if not filename.endswith(".txt"):
+            filename += ".txt"
+
+        if not os.path.exists(save_dir):
             try:
-                os.makedirs(result_dir)
+                os.makedirs(save_dir)
             except OSError:
                 pass
 
-        save_path = os.path.join(result_dir, f"Report_{combined_name}.txt")
+        full_save_path = os.path.join(save_dir, filename)
+
         try:
-            with open(save_path, "w") as f:
+            with open(full_save_path, "w") as f:
                 f.write(final_output)
-            print(f"\033[1;32m[SUCCESS] Report saved: {save_path}\033[0m")
+            print(f"\033[1;32m[SUCCESS] Report saved: {full_save_path}\033[0m")
         except Exception as e:
             print(f"Error saving file: {e}")
             print(final_output)

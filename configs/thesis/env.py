@@ -40,6 +40,15 @@ SE_BENCHMARKS = {
     "spme_montecarlo": os.path.join(TESTS_ROOT, "spme_montecarlo"),
     "spme_conv": os.path.join(TESTS_ROOT, "spme_conv"),
     "spme_bfs": os.path.join(TESTS_ROOT, "spme_bfs"),
+    "spme_hashtable": os.path.join(TESTS_ROOT, "spme_hashtable"),
+    "spme_nqueens": os.path.join(TESTS_ROOT, "spme_nqueens"),
+    "spme_string_search": os.path.join(TESTS_ROOT, "spme_string_search"),
+    "spme_fft": os.path.join(TESTS_ROOT, "spme_fft"),
+    "spme_sort": os.path.join(TESTS_ROOT, "spme_sort"),
+    "spme_md5": os.path.join(TESTS_ROOT, "spme_md5"),
+    "spme_cc": os.path.join(TESTS_ROOT, "spme_cc"),
+    "spme_grep": os.path.join(TESTS_ROOT, "spme_grep"),
+    "spme_randsample": os.path.join(TESTS_ROOT, "spme_randsample"),
 }
 
 # 支持的架构列表

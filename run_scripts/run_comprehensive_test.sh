@@ -31,6 +31,9 @@ BENCHMARKS=(
     "spme_conv"         # Spatial Locality / Large Footprint
     "spme_bfs"          # Random Access / Latency Bound
     "spme_task_queue"   # Synchronization / Lock Contention
+    "spme_hashtable"      # Data Serving / Random Access
+    "spme_nqueens"        # SAT / Branch Heavy
+    "spme_string_search"  # MapReduce / String Ops
 )
 
 # [参数说明]
@@ -44,6 +47,9 @@ PARAMS=(
     "2048"              # Conv: 2048x2048 (32MB Input > 8MB LLC)
     "16384"             # BFS: 65k nodes (随机范围大)
     "10000"            # TaskQueue: 100k tasks (竞争密集)
+    "2000000"     # Hashtable: 2M buckets (~32MB > LLC)
+    "13"          # N-Queens: 13x13 board
+    "50000000"    # String Search: 50MB text
 )
 
 RESULT_DIRS=()
@@ -61,6 +67,9 @@ gcc -static -pthread -O3 spme_bfs.c -o bin/spme_bfs
 gcc -static -pthread -O3 spme_vec_add.c -o bin/spme_vec_add
 gcc -static -pthread -O3 spme_stream.c -o bin/spme_stream
 gcc -static -pthread -O3 spme_task_queue.c -o bin/spme_task_queue
+gcc -static -pthread -O3 spme_hashtable.c -o bin/spme_hashtable
+gcc -static -pthread -O3 spme_nqueens.c -o bin/spme_nqueens
+gcc -static -pthread -O3 spme_string_search.c -o bin/spme_string_search
 
 cd - > /dev/null
 
