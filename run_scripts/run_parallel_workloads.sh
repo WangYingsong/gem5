@@ -85,7 +85,6 @@ for bench in "${target_list[@]}"; do
     # 编译
     echo "  > Compiling $bench ..."
     gcc -static -pthread -O3 "${bench}.c" -o "bin/${bench}" -lm
-    fi
 done
 cd - > /dev/null
 

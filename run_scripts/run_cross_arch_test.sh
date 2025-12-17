@@ -98,7 +98,6 @@ fi
     #编译
     echo "  > Compiling $BENCHMARK ..."
     gcc -static -pthread -O3 "${BENCHMARK}.c" -o "bin/${BENCHMARK}" -lm
-fi
 cd - > /dev/null
 
 # =========================================================
