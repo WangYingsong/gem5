@@ -8,6 +8,9 @@
 # Note: The FIRST architecture provided will be used as the BASELINE.
 # =========================================================
 
+# --- [新增功能] 信号捕获：按 Ctrl+C 时终止整个脚本 ---
+trap 'echo -e "\n\033[1;31m[ABORT] User interrupted execution (Ctrl+C). Stopping all simulations.\033[0m"; exit 1' SIGINT
+
 # 1. 路径配置
 SCRIPT_LOC=$(cd "$(dirname "$0")" && pwd)
 GEM5_ROOT=$(dirname "$SCRIPT_LOC")
@@ -93,8 +96,11 @@ if [ ! -f "${BENCHMARK}.c" ]; then
     exit 1
 fi
 
-echo "  > Compiling $BENCHMARK ..."
-gcc -static -pthread -O3 "${BENCHMARK}.c" -o "bin/${BENCHMARK}" -lm
+# 简单的增量编译检查：如果 bin 存在且比 source 新，则跳过
+if [ ! -f "bin/${BENCHMARK}" ] || [ "${BENCHMARK}.c" -nt "bin/${BENCHMARK}" ]; then
+    echo "  > Compiling $BENCHMARK ..."
+    gcc -static -pthread -O3 "${BENCHMARK}.c" -o "bin/${BENCHMARK}" -lm
+fi
 cd - > /dev/null
 
 # =========================================================
@@ -113,6 +119,7 @@ for arch in "${ARCH_LIST[@]}"; do
     echo -e "\033[1;34m>>> Running on Architecture: $arch ...\033[0m"
 
     # 调用 fast_run.sh
+    # 注意：这里如果用户按 Ctrl+C，顶部的 trap 会捕获并退出脚本
     "$FAST_RUN" se "$arch" "$BENCHMARK" new "$TAG" --options="$PARAM" > /dev/null
 
     # 自动捕获结果路径

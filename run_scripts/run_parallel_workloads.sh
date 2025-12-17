@@ -7,6 +7,9 @@
 #    or: ./run_parallel_workloads.sh <ARCH> all
 # =========================================================
 
+# 中断处理
+trap 'echo -e "\n\033[1;31m[ABORT] User interrupted execution (Ctrl+C). Stopping all benchmarks.\033[0m"; exit 1' SIGINT
+
 # 1. 路径配置
 SCRIPT_LOC=$(cd "$(dirname "$0")" && pwd)
 GEM5_ROOT=$(dirname "$SCRIPT_LOC")
@@ -15,47 +18,33 @@ COMPARE_SCRIPT="$SCRIPT_LOC/compare_results.py"
 
 # =========================================================
 # 2. 参数数据库 (Parameter Database)
-# 定义所有已知 Benchmark 的最佳稳态参数
 # =========================================================
 declare -A DEFAULT_PARAMS
 
 # --- 计算密集型 ---
-DEFAULT_PARAMS["spme_montecarlo"]="80000000"   # 80M iters (Stable IPC)
-DEFAULT_PARAMS["spme_matrix"]="512"            # 512x512 (Cache/ALU Balance)
-DEFAULT_PARAMS["spme_nqueens"]="13"            # 13x13 Board (Branch/ALU Heavy)
+DEFAULT_PARAMS["spme_montecarlo"]="80000000"
+DEFAULT_PARAMS["spme_matrix"]="512"
+DEFAULT_PARAMS["spme_nqueens"]="13"
 
 # --- 访存密集型 ---
-DEFAULT_PARAMS["spme_vec_add"]="3000000"       # 3M elems (~24MB, Streaming)
-DEFAULT_PARAMS["spme_stream"]="2000000"        # 2M elems (~48MB, Bandwidth)
-DEFAULT_PARAMS["spme_conv"]="2048"             # 2048x2048 (Spatial Locality)
+DEFAULT_PARAMS["spme_vec_add"]="3000000"
+DEFAULT_PARAMS["spme_stream"]="2000000"
+DEFAULT_PARAMS["spme_conv"]="2048"
 
 # --- 随机访问/延迟敏感 ---
-DEFAULT_PARAMS["spme_bfs"]="65536"             # 64k Nodes (Latency Bound)
-DEFAULT_PARAMS["spme_hashtable"]="2000000"     # 2M buckets (Random Access)
+DEFAULT_PARAMS["spme_bfs"]="65536"
+DEFAULT_PARAMS["spme_hashtable"]="2000000"
 
 # --- 特殊类型 ---
-DEFAULT_PARAMS["spme_task_queue"]="200000"     # 200k tasks (Lock Contention)
-DEFAULT_PARAMS["spme_string_search"]="50000000" # 50MB text (L1 Data Stream)
+DEFAULT_PARAMS["spme_task_queue"]="200000"
+DEFAULT_PARAMS["spme_string_search"]="50000000"
 
-# ========================
-# BigDataBench Proxies
-# ========================
-# FFT: 65536点 (2^16), O(N log N) 浮点运算
+# --- BigDataBench Proxies ---
 DEFAULT_PARAMS["spme_fft"]="65536"
-
-# Sort: 2M 整数 (8MB), 刚好填满或溢出 LLC
 DEFAULT_PARAMS["spme_sort"]="2000000"
-
-# MD5: 500万轮, 纯 ALU 计算
 DEFAULT_PARAMS["spme_md5"]="5000000"
-
-# CC: 100万节点, 1000万边 (随机内存访问压力大)
 DEFAULT_PARAMS["spme_cc"]="1000000"
-
-# Grep: 50MB 文本 (分支预测压力大)
 DEFAULT_PARAMS["spme_grep"]="50000000"
-
-# RandSample: 1000万整数 (40MB), 混合计算与访存
 DEFAULT_PARAMS["spme_randsample"]="10000000"
 
 # =========================================================
@@ -64,10 +53,7 @@ DEFAULT_PARAMS["spme_randsample"]="10000000"
 if [ $# -lt 2 ]; then
     echo "Usage: $0 <ARCH> <BENCHMARK_LIST...>"
     echo "Examples:"
-    echo "  $0 conventional spme_matrix spme_bfs"
     echo "  $0 conventional all"
-    echo "Available Benchmarks:"
-    for key in "${!DEFAULT_PARAMS[@]}"; do echo "  - $key"; done
     exit 1
 fi
 
@@ -76,7 +62,6 @@ shift
 INPUT_BENCHMARKS=("$@")
 target_list=()
 
-# 处理 "all" 关键字
 if [ "${INPUT_BENCHMARKS[0]}" == "all" ]; then
     echo -e "\033[1;33m[INFO] 'all' selected. Queueing entire suite.\033[0m"
     for key in "${!DEFAULT_PARAMS[@]}"; do
@@ -93,14 +78,15 @@ echo -e "\033[1;34m>>> Preparing Benchmarks...\033[0m"
 cd "$GEM5_ROOT/tests/spme_benchmark"
 
 for bench in "${target_list[@]}"; do
-    # 检查源码是否存在
     if [ ! -f "${bench}.c" ]; then
         echo -e "\033[1;31m[ERROR] Source file ${bench}.c not found!\033[0m"
         continue
     fi
-    # 编译
-    echo "  > Compiling $bench ..."
-    gcc -static -pthread -O3 "${bench}.c" -o "bin/${bench}" -lm
+    # 简单的增量编译检查：如果 bin 存在且比 source 新，则跳过
+    if [ ! -f "bin/${bench}" ] || [ "${bench}.c" -nt "bin/${bench}" ]; then
+        echo "  > Compiling $bench ..."
+        gcc -static -pthread -O3 "${bench}.c" -o "bin/${bench}" -lm
+    fi
 done
 cd - > /dev/null
 
@@ -110,57 +96,82 @@ cd - > /dev/null
 RESULT_DIRS=()
 TAG="Parallel_Run"
 
+# --- [新增功能 1.1] 记录开始时间 ---
+START_TIME_STR=$(date "+%Y-%m-%d_%H-%M-%S")
 echo ""
+echo -e "\033[1;33m[RUNNER] Batch Start Time: $START_TIME_STR\033[0m"
 echo -e "\033[1;33m[RUNNER] Starting execution on Arch: $TARGET_ARCH\033[0m"
 
 for bench in "${target_list[@]}"; do
-    # 获取参数
     param="${DEFAULT_PARAMS[$bench]}"
 
     if [ -z "$param" ]; then
-        echo -e "\033[1;31m[SKIP] Unknown benchmark: $bench (No default param found)\033[0m"
+        echo -e "\033[1;31m[SKIP] Unknown benchmark: $bench\033[0m"
         continue
     fi
 
     echo ""
     echo -e "\033[1;34m>>> Running $bench (Param: $param) ...\033[0m"
 
-    # 调用 fast_run.sh
-    # 格式: fast_run.sh se <arch> <workload> new <tag> --options=<param>
+    # 执行仿真
+    # 注意：这里如果用户按 Ctrl+C，顶部的 trap 会捕获并退出脚本
     "$FAST_RUN" se "$TARGET_ARCH" "$bench" new "$TAG" --options="$param" > /dev/null
 
-    # 自动捕获结果路径 (利用 fast_run 的命名规则)
-    # 查找最新的匹配文件夹
+    # 捕获结果路径
     LATEST_DIR=$(ls -td "$GEM5_ROOT"/tests/result/"$TARGET_ARCH"/"${bench}_"*_"$TAG" 2>/dev/null | head -1)
 
     if [ -d "$LATEST_DIR" ]; then
         RESULT_DIRS+=("$LATEST_DIR")
         echo -e "\033[1;32m  > Finished. Result: $(basename "$LATEST_DIR")\033[0m"
     else
-        echo -e "\033[1;31m  > Error: Simulation failed or result not found for $bench\033[0m"
+        echo -e "\033[1;31m  > Error: Simulation failed for $bench\033[0m"
     fi
 done
 
 # =========================================================
-# 6. 生成报告
+# 6. 结果归档 (Result Archiving)
 # =========================================================
 if [ ${#RESULT_DIRS[@]} -eq 0 ]; then
     echo "No results collected. Exiting."
     exit 0
 fi
 
+# --- [新增功能 1.2] 记录结束时间并创建归档目录 ---
+END_TIME_STR=$(date "+%Y-%m-%d_%H-%M-%S")
+BATCH_DIR_NAME="${START_TIME_STR}------${END_TIME_STR}"
+ARCH_RESULT_ROOT="$GEM5_ROOT/tests/result/$TARGET_ARCH"
+FINAL_BATCH_DIR="$ARCH_RESULT_ROOT/$BATCH_DIR_NAME"
+
+echo ""
+echo -e "\033[1;33m[ARCHIVE] Archiving results to: $BATCH_DIR_NAME\033[0m"
+
+mkdir -p "$FINAL_BATCH_DIR"
+
+# 移动所有生成的文件夹到新目录，并更新列表以供后续脚本使用
+MOVED_DIRS=()
+for dir in "${RESULT_DIRS[@]}"; do
+    if [ -d "$dir" ]; then
+        mv "$dir" "$FINAL_BATCH_DIR/"
+        # 更新路径为移动后的新路径
+        DIR_NAME=$(basename "$dir")
+        MOVED_DIRS+=("$FINAL_BATCH_DIR/$DIR_NAME")
+    fi
+done
+
+# =========================================================
+# 7. 生成报告
+# =========================================================
 echo ""
 echo -e "\033[1;33m[REPORT] Generating Parallel Comparison Table...\033[0m"
 
-# 构造 python 命令
+# 构造 python 命令 (使用移动后的新路径)
 CMD="python3 $COMPARE_SCRIPT"
-for dir in "${RESULT_DIRS[@]}"; do
+for dir in "${MOVED_DIRS[@]}"; do
     CMD="$CMD $dir"
 done
-# 关键: 加上 -f (保存文件) 和 -p (平行模式, 存到 Arch 目录下)
 CMD="$CMD -f -p"
 
 echo "  > Executing report generator..."
 eval $CMD
 
-echo -e "\033[1;32m[DONE] All tasks completed.\033[0m"
+echo -e "\033[1;32m[DONE] Batch Completed. Results saved in: tests/result/$TARGET_ARCH/$BATCH_DIR_NAME\033[0m"
