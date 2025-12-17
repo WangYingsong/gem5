@@ -18,49 +18,76 @@ FAST_RUN="$SCRIPT_LOC/fast_run.sh"
 COMPARE_SCRIPT="$SCRIPT_LOC/compare_results.py"
 
 # =========================================================
-# 2. 参数数据库 (Parameter Database)
-# 保持与 Parallel Runner 一致，确保对比公平性
+# 2. 参数数据库 (Parameter Database) - 论文实验优化版
+# 策略：
+# 1. 计算型：保证指令数足够预热流水线，体现 Master-Worker 高 IPC。
+# 2. 访存型：数据量必须 > LLC (假设 2MB)，强制 DRAM 访问，体现 Bandwidth/Latency 瓶颈。
+# 3. 均衡型：减少迭代次数，只保留必要的锁竞争和混合特征。
 # =========================================================
 declare -A DEFAULT_PARAMS
 
-# --- 计算密集型 ---
-DEFAULT_PARAMS["spme_montecarlo"]="80000000"
-DEFAULT_PARAMS["spme_matrix"]="512"
-DEFAULT_PARAMS["spme_nqueens"]="13"
+# ---------------------------------------------------------
+# [类别 1] 计算密集型 (Compute-Intensive)
+# 预期特征：IPC > 1.5，L1 Miss < 5%，多核加速比接近线性
+# ---------------------------------------------------------
+# MonteCarlo: 纯浮点计算，无依赖。10M 次足够 4 核跑满并进入稳态。
+DEFAULT_PARAMS["spme_montecarlo"]="10000000"   # 原 80M -> 10M
 
-# --- 访存密集型 ---
-DEFAULT_PARAMS["spme_vec_add"]="3000000"
-DEFAULT_PARAMS["spme_stream"]="2000000"
-DEFAULT_PARAMS["spme_conv"]="2048"
+# Matrix: O(N^3)。N=256 时，数据总量约 1.5MB (放入 LLC)，主要压测 ALU。
+DEFAULT_PARAMS["spme_matrix"]="256"            # 原 512 -> 256 (计算量减小 8 倍)
 
-# --- 随机访问/延迟敏感 ---
-DEFAULT_PARAMS["spme_bfs"]="65536"
-DEFAULT_PARAMS["spme_hashtable"]="2000000"
+# NQueens: 指数级复杂度。N=12 是秒级完成，N=13 是分钟级。
+DEFAULT_PARAMS["spme_nqueens"]="12"            # 原 13 -> 12
 
-# --- 特殊类型 ---
-DEFAULT_PARAMS["spme_task_queue"]="200000"
-DEFAULT_PARAMS["spme_string_search"]="50000000"
+# MD5: 纯整数位运算。1M 轮足以压测流水线发射宽度。
+DEFAULT_PARAMS["spme_md5"]="1000000"           # 原 5M -> 1M
 
-# ========================
-# BigDataBench Proxies
-# ========================
-# FFT: 65536点 (2^16), O(N log N) 浮点运算
-DEFAULT_PARAMS["spme_fft"]="65536"
 
-# Sort: 2M 整数 (8MB), 刚好填满或溢出 LLC
-DEFAULT_PARAMS["spme_sort"]="2000000"
+# ---------------------------------------------------------
+# [类别 2] 访存密集型 (Memory-Intensive)
+# 预期特征：IPC < 0.8，LLC Miss 高 (带宽受限) 或 L1 Miss 高 (延迟受限)
+# ---------------------------------------------------------
+# VecAdd: 流式访问 (Bandwidth Bound)。
+# 数据量: 1M double = 8MB > 2MB LLC。保证 100% 穿透 Cache，直击 DRAM。
+DEFAULT_PARAMS["spme_vec_add"]="1000000"       # 原 3M -> 1M
 
-# MD5: 500万轮, 纯 ALU 计算
-DEFAULT_PARAMS["spme_md5"]="5000000"
+# Stream: 同上，标准的内存带宽测试。
+DEFAULT_PARAMS["spme_stream"]="1000000"        # 原 2M -> 1M
 
-# CC: 100万节点, 1000万边 (随机内存访问压力大)
-DEFAULT_PARAMS["spme_cc"]="1000000"
+# CC (连通分量): 随机指针追踪 (Latency Bound)。
+# 难点: 极高的 Cache Miss。5万个点足够制造大量 Miss，不用跑 100万。
+DEFAULT_PARAMS["spme_cc"]="50000"              # 原 1M -> 5万 (大幅缩短时间)
 
-# Grep: 50MB 文本 (分支预测压力大)
-DEFAULT_PARAMS["spme_grep"]="50000000"
+# BFS: 图遍历。64k 节点适中，能体现随机访问延迟。
+DEFAULT_PARAMS["spme_bfs"]="65536"             # 保持 64k 或降至 32768
 
-# RandSample: 1000万整数 (40MB), 混合计算与访存
-DEFAULT_PARAMS["spme_randsample"]="10000000"
+# HashTable: 随机哈希访问。50万次查找足以填满 MSHR 导致停顿。
+DEFAULT_PARAMS["spme_hashtable"]="500000"      # 原 2M -> 50万
+
+# Grep: 文本扫描。10MB 文本足以压测预取器和分支预测。
+DEFAULT_PARAMS["spme_grep"]="10000000"         # 原 50MB -> 10MB
+
+
+# ---------------------------------------------------------
+# [类别 3] 均衡型 / 同步敏感 (Balanced / Synchronization)
+# 预期特征：IPC 中等 (0.8-1.2)，受锁 (Lock) 或混合因素影响
+# ---------------------------------------------------------
+# TaskQueue: 锁竞争 (Lock Contention)。
+# 关键: 2万次锁操作足以导致核间通信拥堵，无需 20万次。
+DEFAULT_PARAMS["spme_task_queue"]="20000"      # 原 200k -> 2万 (解决运行慢的核心)
+
+# FFT: 计算与访存混合，蝴蝶运算。32k 点 (2^15) 刚好溢出 L1 但在 L2/LLC 内。
+DEFAULT_PARAMS["spme_fft"]="32768"             # 原 64k -> 32k
+
+# Sort: 排序包含大量分支预测和数据交换。
+DEFAULT_PARAMS["spme_sort"]="500000"           # 原 2M -> 50万
+
+# RandSample: 生成随机数(计算) + 写内存(访存)。
+DEFAULT_PARAMS["spme_randsample"]="2000000"    # 原 10M -> 2M
+
+# Conv: 卷积运算，有空间局部性。
+DEFAULT_PARAMS["spme_conv"]="1024"             # 降至 1024x1024
+DEFAULT_PARAMS["spme_string_search"]="10000000" # 降至 10MB
 
 # =========================================================
 # 3. 输入解析
